@@ -35,25 +35,30 @@ export default function ShopPage() {
   useEffect(() => { load(); }, [load]);
 
   async function openPack(packKey: PackKey) {
-    setError('');
-    setResults(null);
-    setOpening(true);
+  setError('');
+  setResults(null);
+  setOpening(true);
 
-    const res = await fetch('/api/open-pack', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ packKey }),
-    });
-    const data = await res.json();
-    setOpening(false);
+  const { data: { session } } = await supabase.auth.getSession();
 
-    if (!res.ok) { setError(data.error); return; }
+  const res = await fetch('/api/open-pack', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token}`,
+    },
+    body: JSON.stringify({ packKey }),
+  });
+  const data = await res.json();
+  setOpening(false);
 
-    setResults(data.results);
-    setRevealed(new Array(data.results.length).fill(false));
-    setAllReveal(false);
-    load(); // refresh profile currencies
-  }
+  if (!res.ok) { setError(data.error); return; }
+
+  setResults(data.results);
+  setRevealed(new Array(data.results.length).fill(false));
+  setAllReveal(false);
+  load();
+}
 
   function revealCard(i: number) {
     setRevealed(prev => { const n = [...prev]; n[i] = true; return n; });
