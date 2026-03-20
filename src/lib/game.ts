@@ -36,7 +36,7 @@ export const PACKS = {
   basic: {
     name: 'Basic Pack',
     description: 'Le classique — 3 miniatures aléatoires',
-    cost: { tubes: 200, crystals: 0 },
+    cost: { tubes: 0, crystals: 0 },
     count: 3,
     emoji: '📦',
     color: 'from-gray-700 to-gray-900',
