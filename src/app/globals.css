@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0a0a0f;
+  --surface: #13131a;
+  --surface2: #1e1e2a;
+  --border: #2a2a3a;
+  --text: #e2e2f0;
+  --muted: #6b6b8a;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Rarity borders */
+.card-basic          { border-color: #9ca3af; }
+.card-rare           { border-color: #22c55e; box-shadow: 0 0 8px #22c55e55; }
+.card-super_rare     { border-color: #3b82f6; box-shadow: 0 0 10px #3b82f655; }
+.card-epic           { border-color: #a855f7; box-shadow: 0 0 12px #a855f755; }
+.card-mythic         { border-color: #f59e0b; box-shadow: 0 0 14px #f59e0b55; }
+.card-legendary      { border-color: #ef4444; box-shadow: 0 0 16px #ef444455; animation: glow-pulse 2s ease-in-out infinite; }
+.card-ultra_legendary{ border-color: #ec4899; box-shadow: 0 0 20px #ec489955; animation: glow-pulse 2s ease-in-out infinite; }
+.card-secret         { border-color: #06b6d4; box-shadow: 0 0 25px #06b6d488; animation: glow-pulse 1.5s ease-in-out infinite; }
+.card-channel        { border-color: #ffd700; box-shadow: 0 0 30px #ffd70099; animation: glow-pulse 1s ease-in-out infinite; }
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 8px currentColor; }
+  50%       { box-shadow: 0 0 30px currentColor, 0 0 60px currentColor; }
+}
+
+.card-flip-container { perspective: 1000px; }
+.card-flip-inner     { transition: transform 0.7s; transform-style: preserve-3d; }
+.card-flip-inner.flipped { transform: rotateY(180deg); }
+.card-front, .card-back { backface-visibility: hidden; }
+.card-back { transform: rotateY(180deg); }
