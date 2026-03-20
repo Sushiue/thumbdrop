@@ -165,10 +165,14 @@ export default function ShopPage() {
                     </div>
                     <div className="card-back absolute inset-0">
                       {revealed[i] && (
-                        r.type === 'channel'
-                          ? <CardItem channel={r.data as Parameters<typeof CardItem>[0]['channel']} size="md" />
-                          : <CardItem card={r.data as Parameters<typeof CardItem>[0]['card']} size="md" />
-                      )}
+  (r.data as Record<string,unknown>)?.error ? (
+    <div className="w-40 h-52 rounded-xl border-2 border-gray-700 bg-[#13131a] flex items-center justify-center text-center p-3">
+      <div><p className="text-2xl mb-2">😵</p><p className="text-gray-500 text-xs">Erreur API YouTube</p></div>
+    </div>
+  ) : r.type === 'channel'
+    ? <CardItem channel={r.data as Parameters<typeof CardItem>[0]['channel']} size="md" />
+    : <CardItem card={r.data as Parameters<typeof CardItem>[0]['card']} size="md" />
+)}
                     </div>
                   </div>
 

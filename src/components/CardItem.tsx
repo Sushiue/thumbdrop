@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import { RARITY_CONFIG, formatViewCount } from '@/lib/game';
 
 interface CardItemProps {
@@ -20,16 +19,27 @@ interface CardItemProps {
   showLabel?: boolean;
 }
 
+const sizeClasses = {
+  sm:  'w-32',
+  md:  'w-44',
+  lg:  'w-56',
+};
+
 export default function CardItem({ card, channel, size = 'md', showLabel = true }: CardItemProps) {
   const isChannel = !!channel;
-  const rarity = isChannel ? 'channel' : (card?.rarity ?? 'basic');
-  const cfg    = RARITY_CONFIG[rarity];
+  const rarity    = isChannel ? 'channel' : (card?.rarity ?? 'basic');
+  const cfg       = RARITY_CONFIG[rarity] ?? RARITY_CONFIG.basic;
 
-  const sizeClasses = {
-    sm:  'w-32',
-    md:  'w-44',
-    lg:  'w-56',
-  };
+  // Garde contre les données manquantes
+  if (!isChannel && (!card?.thumbnail_url || !card?.title)) {
+    return (
+      <div className={`${sizeClasses[size]} flex-shrink-0`}>
+        <div className="border-2 border-gray-700 rounded-xl bg-[#13131a] flex items-center justify-center text-center p-3" style={{ height: 180 }}>
+          <div><p className="text-2xl mb-2">😵</p><p className="text-gray-500 text-xs">Données manquantes</p></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`${sizeClasses[size]} flex-shrink-0`}>
@@ -68,7 +78,7 @@ export default function CardItem({ card, channel, size = 'md', showLabel = true 
               <>
                 <p className="text-white font-semibold text-xs truncate leading-tight">{card!.title}</p>
                 <p className="text-gray-400 text-xs truncate">{card!.channel_name}</p>
-                <p className="text-gray-500 text-xs">{formatViewCount(card!.view_count)} vues</p>
+                <p className="text-gray-500 text-xs">{formatViewCount(card!.view_count ?? 0)} vues</p>
               </>
             )}
           </div>
