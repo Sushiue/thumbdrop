@@ -1,75 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { getDailyExpiry, getWeeklyExpiry } from '@/lib/game';
 
-// GET — initialise + retourne les missions actives du joueur
-export async function GET() {
-  const supabase      = createClient();
+async function getUser(req: NextRequest) {
   const supabaseAdmin = createAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) return null;
+  const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+  return user;
+}
+
+export async function GET(req: NextRequest) {
+  const supabaseAdmin = createAdminClient();
+  const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   const now = new Date().toISOString();
-
-  // Toutes les missions définies
-  const { data: allMissions } = await supabase.from('missions').select('*');
+  const { data: allMissions } = await supabaseAdmin.from('missions').select('*');
   if (!allMissions) return NextResponse.json({ missions: [] });
 
-  // Missions actives du joueur
-  const { data: active } = await supabase
-    .from('player_missions')
-    .select('*, missions(*)')
-    .eq('player_id', user.id)
-    .gt('expires_at', now);
+  const { data: active } = await supabaseAdmin
+    .from('player_missions').select('*, missions(*)')
+    .eq('player_id', user.id).gt('expires_at', now);
 
   const activeIds = (active ?? []).map((pm: Record<string, unknown>) => (pm.missions as Record<string, unknown>)?.id);
 
-  // Créer celles qui manquent
   for (const mission of allMissions) {
     if (activeIds.includes(mission.id)) continue;
     const expires_at = mission.type === 'daily' ? getDailyExpiry().toISOString() : getWeeklyExpiry().toISOString();
     await supabaseAdmin.from('player_missions').insert({
-      player_id:  user.id,
-      mission_id: mission.id,
-      expires_at,
-    }).onConflict('player_id, mission_id, expires_at').ignore();
+      player_id: user.id, mission_id: mission.id, expires_at,
+    });
   }
 
-  // Retourner toutes les missions actives
-  const { data: current } = await supabase
-    .from('player_missions')
-    .select('*, missions(*)')
-    .eq('player_id', user.id)
-    .gt('expires_at', now)
-    .order('created_at');
+  const { data: current } = await supabaseAdmin
+    .from('player_missions').select('*, missions(*)')
+    .eq('player_id', user.id).gt('expires_at', now).order('created_at');
 
   return NextResponse.json({ missions: current ?? [] });
 }
 
-// POST — réclamer une mission complétée
 export async function POST(req: NextRequest) {
-  const supabase      = createClient();
   const supabaseAdmin = createAdminClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getUser(req);
   if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
   const { playerMissionId } = await req.json();
 
-  const { data: pm } = await supabase
-    .from('player_missions')
-    .select('*, missions(*)')
-    .eq('id', playerMissionId)
-    .eq('player_id', user.id)
-    .single();
+  const { data: pm } = await supabaseAdmin
+    .from('player_missions').select('*, missions(*)')
+    .eq('id', playerMissionId).eq('player_id', user.id).single();
 
-  if (!pm) return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 });
+  if (!pm)          return NextResponse.json({ error: 'Mission introuvable' }, { status: 404 });
   if (!pm.completed) return NextResponse.json({ error: 'Mission non complétée' }, { status: 400 });
   if (pm.claimed)    return NextResponse.json({ error: 'Déjà réclamée' }, { status: 400 });
 
   const mission = pm.missions as Record<string, number>;
-
-  // Donner la récompense
-  const { data: profile } = await supabase.from('profiles').select('tubes, crystals').eq('id', user.id).single();
+  const { data: profile } = await supabaseAdmin.from('profiles').select('tubes, crystals').eq('id', user.id).single();
   if (!profile) return NextResponse.json({ error: 'Profil introuvable' }, { status: 404 });
 
   await supabaseAdmin.from('profiles').update({

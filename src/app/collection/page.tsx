@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Navbar from '@/components/Navbar';
 import CardItem from '@/components/CardItem';
-import { RARITY_CONFIG, RARITIES, formatViewCount } from '@/lib/game';
+import { RARITY_CONFIG, RARITIES, formatViewCount, SELL_PRICE } from '@/lib/game';
 
 interface Profile  { id: string; username: string; tubes: number; crystals: number; total_cards: number; }
 interface InvItem  { id: string; obtained_at: string; card_id?: string | null; channel_id?: string | null; cards?: Record<string, unknown> | null; yt_channels?: Record<string, unknown> | null; }
@@ -23,6 +23,9 @@ export default function CollectionPage() {
   const [search,    setSearch]    = useState('');
   const [selected,  setSelected]  = useState<InvItem | null>(null);
   const [loading,   setLoading]   = useState(true);
+  const [toast,     setToast]     = useState('');
+
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -43,6 +46,26 @@ export default function CollectionPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function sellCard(inventoryId: string, price: number) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/sell-card', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ inventoryId }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Carte vendue pour ${data.tubes} 🪙`);
+      setSelected(null);
+      load();
+    } else {
+      showToast(data.error);
+    }
+  }
+
   const filtered = inventory.filter(inv => {
     const card    = inv.cards    as Record<string, unknown> | null;
     const channel = inv.yt_channels as Record<string, unknown> | null;
@@ -62,7 +85,6 @@ export default function CollectionPage() {
     return true;
   });
 
-  // Stats par rareté
   const stats: Record<string, number> = { channel: 0 };
   for (const r of RARITIES) stats[r] = 0;
   for (const inv of inventory) {
@@ -83,7 +105,12 @@ export default function CollectionPage() {
     <div className="min-h-screen pb-20 sm:pb-0 sm:pl-52 pt-14">
       <Navbar username={profile?.username ?? ''} tubes={profile?.tubes ?? 0} crystals={profile?.crystals ?? 0} />
 
-      {/* Detail modal */}
+      {toast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-green-900/90 border border-green-600 text-green-300 px-6 py-3 rounded-xl shadow-2xl font-bold text-sm backdrop-blur">
+          ✅ {toast}
+        </div>
+      )}
+
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur p-4"
              onClick={() => setSelected(null)}>
@@ -92,7 +119,7 @@ export default function CollectionPage() {
             {selected.yt_channels ? (
               <ChannelDetail ch={selected.yt_channels as Record<string, unknown>} inv={selected} />
             ) : selected.cards ? (
-              <CardDetail card={selected.cards as Record<string, unknown>} inv={selected} />
+              <CardDetail card={selected.cards as Record<string, unknown>} inv={selected} onSell={sellCard} />
             ) : null}
             <button onClick={() => setSelected(null)}
               className="mt-4 w-full py-2 bg-[#1e1e2a] hover:bg-[#2a2a3a] border border-[#2a2a3a] text-gray-400 rounded-xl text-sm transition-all">
@@ -108,7 +135,6 @@ export default function CollectionPage() {
           <span className="text-gray-400 text-sm">{inventory.length} cartes</span>
         </div>
 
-        {/* Rarity stats */}
         <div className="flex flex-wrap gap-2 mb-6">
           {[...RARITIES, 'channel' as const].map(r => {
             const cfg = RARITY_CONFIG[r];
@@ -121,7 +147,6 @@ export default function CollectionPage() {
           })}
         </div>
 
-        {/* Search + Filter */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="🔍 Chercher..."
@@ -142,7 +167,6 @@ export default function CollectionPage() {
           </div>
         </div>
 
-        {/* Grid */}
         {filtered.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-4xl mb-3">📭</p>
@@ -166,8 +190,9 @@ export default function CollectionPage() {
   );
 }
 
-function CardDetail({ card, inv }: { card: Record<string, unknown>; inv: InvItem }) {
-  const cfg = RARITY_CONFIG[card.rarity as string] ?? RARITY_CONFIG.basic;
+function CardDetail({ card, inv, onSell }: { card: Record<string, unknown>; inv: InvItem; onSell: (id: string, price: number) => void }) {
+  const cfg   = RARITY_CONFIG[card.rarity as string] ?? RARITY_CONFIG.basic;
+  const price = SELL_PRICE[card.rarity as string] ?? 10;
   return (
     <div>
       <img src={card.thumbnail_url as string} alt={card.title as string} className="w-full rounded-xl mb-3" />
@@ -178,8 +203,12 @@ function CardDetail({ card, inv }: { card: Record<string, unknown>; inv: InvItem
       </div>
       <h3 className="text-white font-bold text-sm mb-0.5 line-clamp-2">{card.title as string}</h3>
       <p className="text-gray-400 text-xs mb-1">{card.channel_name as string}</p>
-      <p className="text-gray-500 text-xs">{formatViewCount(card.view_count as number)} vues • {formatViewCount(card.like_count as number)} likes</p>
+      <p className="text-gray-500 text-xs">{formatViewCount(card.view_count as number)} vues · {formatViewCount(card.like_count as number)} likes</p>
       <p className="text-gray-600 text-xs mt-2">Obtenu le {new Date(inv.obtained_at).toLocaleDateString('fr-FR')}</p>
+      <button onClick={() => onSell(inv.id, price)}
+        className="mt-4 w-full py-2 bg-amber-700/40 hover:bg-amber-700/60 border border-amber-700/40 text-amber-400 rounded-xl text-sm font-bold transition-all">
+        Vendre pour {price} 🪙
+      </button>
     </div>
   );
 }

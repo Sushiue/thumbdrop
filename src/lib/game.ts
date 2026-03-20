@@ -5,6 +5,31 @@
 export const RARITIES = ['basic','rare','super_rare','epic','mythic','legendary','ultra_legendary','secret'] as const;
 export type Rarity = typeof RARITIES[number];
 
+// Prix de vente en Tubes
+export const SELL_PRICE: Record<string, number> = {
+  basic:            10,
+  rare:             30,
+  super_rare:       80,
+  epic:            200,
+  mythic:          500,
+  legendary:      1500,
+  ultra_legendary:4000,
+  secret:        10000,
+};
+
+// Revenus passifs par heure en Tubes
+export const PASSIVE_INCOME: Record<string, number> = {
+  basic:            2,
+  rare:             6,
+  super_rare:       15,
+  epic:             40,
+  mythic:          100,
+  legendary:       300,
+  ultra_legendary: 800,
+  secret:         2000,
+  channel:         500,
+};
+
 export const RARITY_CONFIG: Record<string, { label: string; color: string; glow: string; emoji: string }> = {
   basic:          { label: 'Basique',          color: '#9ca3af', glow: 'shadow-gray-400',   emoji: '⚪' },
   rare:           { label: 'Rare',             color: '#22c55e', glow: 'shadow-green-400',  emoji: '🟢' },
@@ -17,18 +42,16 @@ export const RARITY_CONFIG: Record<string, { label: string; color: string; glow:
   channel:        { label: 'Chaîne YouTube',   color: '#ffd700', glow: 'shadow-yellow-400', emoji: '📺' },
 };
 
-// Rareté en fonction des vues
-// Secret = vidéos avec MOINS de 100 vues (ultra obscures)
-// Le reste est basé sur un seuil réduit
+// Rareté — Secret = vidéos < 100 vues
 export function rarityFromViews(views: number): Rarity {
-  if (views < 100)          return 'secret';        // < 100 vues → Secret ✨
-  if (views >= 200_000_000) return 'ultra_legendary'; // 200M+
-  if (views >= 50_000_000)  return 'legendary';      // 50M+
-  if (views >= 10_000_000)  return 'mythic';         // 10M+
-  if (views >= 1_000_000)   return 'epic';           // 1M+
-  if (views >= 100_000)     return 'super_rare';     // 100K+
-  if (views >= 10_000)      return 'rare';           // 10K+
-  return 'basic';                                    // < 10K
+  if (views < 100)          return 'secret';
+  if (views >= 200_000_000) return 'ultra_legendary';
+  if (views >= 50_000_000)  return 'legendary';
+  if (views >= 10_000_000)  return 'mythic';
+  if (views >= 1_000_000)   return 'epic';
+  if (views >= 100_000)     return 'super_rare';
+  if (views >= 10_000)      return 'rare';
+  return 'basic';
 }
 
 // ===== PACKS =====
@@ -36,12 +59,12 @@ export const PACKS = {
   basic: {
     name: 'Basic Pack',
     description: 'Le classique — 3 miniatures aléatoires',
-    cost: { tubes: 0, crystals: 0 },
+    cost: { tubes: 200, crystals: 0 },
     count: 3,
     emoji: '📦',
     color: 'from-gray-700 to-gray-900',
     rarityBoost: 0,
-    channelChance: 0.02,   // 2%
+    channelChance: 0.02,
   },
   premium: {
     name: 'Premium Pack',
@@ -51,7 +74,7 @@ export const PACKS = {
     emoji: '🎁',
     color: 'from-blue-700 to-blue-900',
     rarityBoost: 1,
-    channelChance: 0.05,   // 5%
+    channelChance: 0.05,
   },
   crystal: {
     name: 'Crystal Pack',
@@ -61,7 +84,7 @@ export const PACKS = {
     emoji: '💎',
     color: 'from-purple-700 to-pink-900',
     rarityBoost: 2,
-    channelChance: 0.10,   // 10%
+    channelChance: 0.10,
     guaranteedMinRarity: 'epic' as Rarity,
   },
   weekly_reward: {
@@ -72,7 +95,7 @@ export const PACKS = {
     emoji: '🏆',
     color: 'from-amber-600 to-orange-800',
     rarityBoost: 1,
-    channelChance: 0.05,   // 5%
+    channelChance: 0.05,
   },
 } as const;
 
@@ -88,25 +111,28 @@ const SEARCH_QUERIES = [
   'documentary', 'animals funny', 'fails compilation', 'car review',
 ];
 
-export async function fetchRandomYouTubeVideo(rarityBoost = 0) {
+export async function fetchRandomYouTubeVideo(rarityBoost = 0, favoriteChannel?: string) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) throw new Error('YOUTUBE_API_KEY not set');
 
-  const query = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
+  // 10% de chance d'utiliser la chaîne favorite si définie
+  const useFavorite = favoriteChannel && Math.random() < 0.10;
+  const query = useFavorite
+    ? `${favoriteChannel} video`
+    : SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
+
   const maxResults = 25;
 
-  // 1. Recherche — videoDuration=medium exclut les Shorts (< 4 min)
+  // videoDuration=medium exclut les Shorts (< 4 min)
   const searchRes = await fetch(
     `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&videoDuration=medium&key=${apiKey}`
   );
   const searchData = await searchRes.json();
   if (!searchData.items?.length) throw new Error('No YouTube results');
 
-  // Sélection aléatoire
   const item = searchData.items[Math.floor(Math.random() * searchData.items.length)];
   const videoId = item.id.videoId;
 
-  // 2. Statistiques
   const statsRes = await fetch(
     `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoId}&key=${apiKey}`
   );
@@ -114,7 +140,7 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0) {
   const video = statsData.items?.[0];
   if (!video) throw new Error('Video stats not found');
 
-  // Double vérification : exclure les vidéos < 4 minutes (Shorts qui passent quand même)
+  // Double vérif anti-Shorts
   const duration = video.contentDetails?.duration as string ?? '';
   const isShort  = /^PT(\d+S|[0-3]M\d*S?)$/.test(duration);
   if (isShort) throw new Error('Short detected, retry');
@@ -122,7 +148,6 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0) {
   const viewCount = parseInt(video.statistics.viewCount || '0', 10);
   const likeCount = parseInt(video.statistics.likeCount || '0', 10);
 
-  // Rareté avec boost
   const boostedViews = rarityBoost === 0 ? viewCount
     : rarityBoost === 1 ? viewCount * 3
     : viewCount * 10;
@@ -135,11 +160,11 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0) {
     channelId:    video.snippet.channelId as string,
     viewCount,
     likeCount,
-    rarity:       rarityFromViews(boostedViews),
+    rarity: rarityFromViews(boostedViews),
   };
 }
 
-export async function fetchRandomYouTubeChannel() {
+export async function fetchRandomYouTubeChannel(favoriteChannel?: string) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) throw new Error('YOUTUBE_API_KEY not set');
 
@@ -158,15 +183,35 @@ export async function fetchRandomYouTubeChannel() {
     'UCbmNph6atAoGfqLoCL_duAg', // Veritasium
     'UCsXVk37bltHxD1rDPwtNM8Q', // Kurzgesagt
     'UCJXGnmNKr_8pEi1HwYOCUvQ', // Vsauce
-    'UCHnyfMqiRRG1u-2MsSQLbXA', // Vsauce2
-    'UCWX3yGbODM3pzEoSMQNrBLg', // Dude Perfect
     'UCo8bcnLyZH8tBIH9V1mLgqQ', // Dream
-    'UC7_YxT-KID8kRbqZo7MyscQ', // Markiplier 2
     'UCam8T03EOFBsNdR2thrHhtA', // Linus Tech Tips
   ];
 
-  const channelId = popularChannels[Math.floor(Math.random() * popularChannels.length)];
+  // 10% de chance de chercher la chaîne favorite spécifiquement
+  if (favoriteChannel && Math.random() < 0.10) {
+    const searchRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(favoriteChannel)}&type=channel&maxResults=1&key=${apiKey}`
+    );
+    const searchData = await searchRes.json();
+    const foundId = searchData.items?.[0]?.id?.channelId;
+    if (foundId) {
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${foundId}&key=${apiKey}`
+      );
+      const data = await res.json();
+      const ch = data.items?.[0];
+      if (ch) {
+        return {
+          channelId:       ch.id as string,
+          channelName:     ch.snippet.title as string,
+          subscriberCount: parseInt(ch.statistics.subscriberCount || '0', 10),
+          thumbnailUrl:    ch.snippet.thumbnails?.high?.url || ch.snippet.thumbnails?.default?.url as string,
+        };
+      }
+    }
+  }
 
+  const channelId = popularChannels[Math.floor(Math.random() * popularChannels.length)];
   const res = await fetch(
     `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${apiKey}`
   );

@@ -5,11 +5,10 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Navbar from '@/components/Navbar';
 import CardItem from '@/components/CardItem';
-import { RARITY_CONFIG } from '@/lib/game';
 
 interface Profile   { id: string; username: string; tubes: number; crystals: number; total_cards: number; }
 interface Mission   { id: string; progress: number; completed: boolean; claimed: boolean; expires_at: string; missions: { id: string; title: string; description: string; reward_tubes: number; reward_crystals: number; type: string; target_count: number; }; }
-interface InvItem   { id: string; obtained_at: string; card_id?: string | null; channel_id?: string | null; cards?: Record<string, unknown> | null; yt_channels?: Record<string, unknown> | null; }
+interface InvItem   { id: string; obtained_at: string; cards?: Record<string, unknown> | null; yt_channels?: Record<string, unknown> | null; }
 
 export default function Dashboard() {
   const router   = useRouter();
@@ -30,12 +29,13 @@ export default function Dashboard() {
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
     setProfile(prof);
 
-    // Missions
-    const res = await fetch('/api/missions/claim');
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/missions/claim', {
+      headers: { 'Authorization': `Bearer ${session?.access_token}` }
+    });
     const { missions: m } = await res.json();
     setMissions(m ?? []);
 
-    // Dernières cartes
     const { data: inv } = await supabase
       .from('inventory')
       .select('*, cards(*), yt_channels(*)')
@@ -49,9 +49,13 @@ export default function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
 
   async function claimMission(pmId: string) {
+    const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch('/api/missions/claim', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+      },
       body: JSON.stringify({ playerMissionId: pmId }),
     });
     const data = await res.json();
@@ -74,7 +78,6 @@ export default function Dashboard() {
     <div className="min-h-screen pb-20 sm:pb-0 sm:pl-52 pt-14">
       <Navbar username={profile?.username ?? ''} tubes={profile?.tubes ?? 0} crystals={profile?.crystals ?? 0} />
 
-      {/* Toast */}
       {toast && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-green-900/90 border border-green-600 text-green-300 px-6 py-3 rounded-xl shadow-2xl font-bold text-sm backdrop-blur">
           ✅ {toast}
@@ -82,8 +85,6 @@ export default function Dashboard() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
-
-        {/* Welcome + Stats */}
         <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/20 border border-purple-800/30 rounded-2xl p-6">
           <h1 className="text-2xl font-black text-white mb-1">Bienvenue, <span className="text-purple-400">{profile?.username}</span> 👋</h1>
           <p className="text-gray-400 text-sm mb-4">Collectionne des miniatures YouTube légendaires !</p>
@@ -102,7 +103,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Missions Quotidiennes */}
         <section>
           <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2">☀️ Missions du Jour</h2>
           <div className="space-y-3">
@@ -111,7 +111,6 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Missions Hebdo */}
         <section>
           <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2">📅 Missions Hebdomadaires</h2>
           <div className="space-y-3">
@@ -120,7 +119,6 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Dernières cartes */}
         {recent.length > 0 && (
           <section>
             <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2">🆕 Dernières Obtenues</h2>
@@ -156,19 +154,17 @@ function MissionCard({ pm, onClaim }: { pm: Mission; onClaim: (id: string) => vo
           <span className="text-xs text-gray-500 ml-auto whitespace-nowrap">{hours}h restantes</span>
         </div>
         <p className="text-gray-400 text-xs mb-2">{m.description}</p>
-        {/* Progress bar */}
         <div className="h-1.5 bg-[#2a2a3a] rounded-full overflow-hidden">
           <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
         </div>
         <p className="text-gray-500 text-xs mt-1">{pm.progress}/{m.target_count}</p>
       </div>
-      {/* Reward */}
       <div className="text-right flex-shrink-0">
-        {m.reward_tubes   > 0 && <p className="text-amber-400 text-sm font-bold">+{m.reward_tubes} 🪙</p>}
+        {m.reward_tubes    > 0 && <p className="text-amber-400 text-sm font-bold">+{m.reward_tubes} 🪙</p>}
         {m.reward_crystals > 0 && <p className="text-cyan-400 text-sm font-bold">+{m.reward_crystals} 💎</p>}
         {pm.completed && !pm.claimed && (
           <button onClick={() => onClaim(pm.id)}
-            className="mt-2 px-3 py-1.5 bg-green-600 hover:bg-green-500 rounded-lg text-white text-xs font-bold transition-all shadow shadow-green-900/30">
+            className="mt-2 px-3 py-1.5 bg-green-600 hover:bg-green-500 rounded-lg text-white text-xs font-bold transition-all">
             Réclamer ✨
           </button>
         )}
