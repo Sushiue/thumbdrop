@@ -14,13 +14,13 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabaseAdmin.auth.getUser(token);
   if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
-  const { packKey } = await req.json() as { packKey: PackKey };
+  const { packKey, lang = 'en' } = await req.json() as { packKey: PackKey; lang?: 'en' | 'fr' };
   const pack = PACKS[packKey];
   if (!pack) return NextResponse.json({ error: 'Pack inconnu' }, { status: 400 });
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('tubes, crystals, total_cards')
+    .select('tubes, crystals, total_cards, favorite_channel')
     .eq('id', user.id)
     .single();
 
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
   }).eq('id', user.id);
 
   const results: Array<{ type: 'card' | 'channel'; data: Record<string, unknown> }> = [];
+  const favoriteChannel = profile.favorite_channel as string | undefined;
 
   for (let i = 0; i < pack.count; i++) {
     const roll = Math.random();
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     try {
       if (isChannel) {
-        const chData = await fetchRandomYouTubeChannel();
+        const chData = await fetchRandomYouTubeChannel(favoriteChannel);
         const { data: existing } = await supabaseAdmin
           .from('yt_channels')
           .select('id, owner_id, channel_name, subscriber_count, thumbnail_url')
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
           .single();
 
         if (existing && existing.owner_id) {
-          const video = await fetchRandomYouTubeVideo(pack.rarityBoost ?? 0);
+          const video = await fetchRandomYouTubeVideo(pack.rarityBoost ?? 0, favoriteChannel, lang);
           const card  = await upsertCard(supabaseAdmin, video);
           await supabaseAdmin.from('inventory').insert({ player_id: user.id, card_id: card.id });
           results.push({ type: 'card', data: card });
@@ -79,12 +80,12 @@ export async function POST(req: NextRequest) {
           results.push({ type: 'channel', data: channelRow! });
         }
       } else {
-        const video = await fetchRandomYouTubeVideo(pack.rarityBoost ?? 0);
+        const video = await fetchRandomYouTubeVideo(pack.rarityBoost ?? 0, favoriteChannel, lang);
         let finalVideo = video;
         const minRarity = (pack as { guaranteedMinRarity?: string }).guaranteedMinRarity;
         if (minRarity && RARITY_ORDER.indexOf(video.rarity) < RARITY_ORDER.indexOf(minRarity)) {
           for (let r = 0; r < 3; r++) {
-            const retry = await fetchRandomYouTubeVideo((pack.rarityBoost ?? 0) + 1);
+            const retry = await fetchRandomYouTubeVideo((pack.rarityBoost ?? 0) + 1, favoriteChannel, lang);
             if (RARITY_ORDER.indexOf(retry.rarity) >= RARITY_ORDER.indexOf(minRarity)) {
               finalVideo = retry;
               break;
@@ -135,11 +136,8 @@ async function upsertCard(supabase: ReturnType<typeof createAdminClient>, video:
 async function updateMissionProgress(supabase: ReturnType<typeof createAdminClient>, playerId: string, action: string, amount: number) {
   const now = new Date().toISOString();
   const { data: activeMissions } = await supabase
-    .from('player_missions')
-    .select('*, missions(*)')
-    .eq('player_id', playerId)
-    .eq('completed', false)
-    .gt('expires_at', now);
+    .from('player_missions').select('*, missions(*)')
+    .eq('player_id', playerId).eq('completed', false).gt('expires_at', now);
   if (!activeMissions) return;
   for (const pm of activeMissions) {
     const mission = (pm as Record<string, unknown>).missions as Record<string, unknown>;
