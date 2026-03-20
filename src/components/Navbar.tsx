@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Home, Package, BookOpen, Trophy, LogOut, ArrowLeftRight, Wheat } from 'lucide-react';
+import { Home, Package, BookOpen, Trophy, LogOut, ArrowLeftRight, Wheat, User } from 'lucide-react';
 
 const NAV = [
   { href: '/dashboard',   label: 'Accueil',    icon: Home },
@@ -12,6 +12,7 @@ const NAV = [
   { href: '/farm',        label: 'Ferme',      icon: Wheat },
   { href: '/trades',      label: 'Échanges',   icon: ArrowLeftRight },
   { href: '/leaderboard', label: 'Classement', icon: Trophy },
+  { href: '/profile',     label: 'Profil',     icon: User },
 ];
 
 export default function Navbar({ username, tubes, crystals }: { username: string; tubes: number; crystals: number }) {

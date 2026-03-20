@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import Navbar from '@/components/Navbar';
 
@@ -49,7 +50,7 @@ export default function LeaderboardPage() {
 
       <div className="max-w-3xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-black text-white mb-1">🏆 Classement Global</h1>
-        <p className="text-gray-400 text-sm mb-6">Les meilleurs collectionneurs de miniatures YouTube</p>
+        <p className="text-gray-400 text-sm mb-6">Clique sur un joueur pour voir son profil</p>
 
         {myRank && (
           <div className="mb-6 bg-purple-900/20 border border-purple-700/30 rounded-xl px-5 py-3 flex items-center gap-3">
@@ -69,14 +70,14 @@ export default function LeaderboardPage() {
               const heights   = ['h-24', 'h-32', 'h-20'];
               const pos       = positions[i];
               return (
-                <div key={entry.id} className="flex flex-col items-center">
+                <Link key={entry.id} href={`/u/${entry.username}`} className="flex flex-col items-center hover:scale-105 transition-transform">
                   <span className="text-2xl mb-1">{MEDALS[pos - 1]}</span>
                   <div className={`${entry.id === profile?.id ? 'bg-purple-900/40 border-purple-600' : 'bg-[#13131a] border-[#2a2a3a]'} border rounded-xl ${heights[i]} w-24 flex flex-col items-center justify-center gap-1 transition-all`}>
                     <p className="text-white font-bold text-xs text-center px-1 truncate w-full text-center">{entry.username}</p>
                     <p className="text-purple-300 text-xs font-bold">{entry.total_cards} 🎴</p>
                     {entry.channel_count > 0 && <p className="text-yellow-400 text-xs">{entry.channel_count} 📺</p>}
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -85,11 +86,12 @@ export default function LeaderboardPage() {
         {/* Full list */}
         <div className="space-y-2">
           {board.map((entry, i) => (
-            <div key={entry.id} className={`flex items-center gap-4 px-4 py-3 rounded-xl border transition-all ${
-              entry.id === profile?.id
-                ? 'bg-purple-900/20 border-purple-700/40'
-                : 'bg-[#13131a] border-[#2a2a3a] hover:border-[#3a3a4a]'
-            }`}>
+            <Link key={entry.id} href={`/u/${entry.username}`}
+              className={`flex items-center gap-4 px-4 py-3 rounded-xl border transition-all hover:border-purple-600/40 ${
+                entry.id === profile?.id
+                  ? 'bg-purple-900/20 border-purple-700/40'
+                  : 'bg-[#13131a] border-[#2a2a3a] hover:border-[#3a3a4a]'
+              }`}>
               <span className="text-lg w-7 text-center flex-shrink-0">
                 {i < 3 ? MEDALS[i] : <span className="text-gray-500 text-sm font-bold">#{i + 1}</span>}
               </span>
@@ -98,25 +100,17 @@ export default function LeaderboardPage() {
                   {entry.username} {entry.id === profile?.id && '(toi)'}
                 </p>
                 <div className="flex flex-wrap gap-2 mt-0.5">
-                  {entry.channel_count > 0 && (
-                    <span className="text-yellow-400 text-xs">{entry.channel_count} 📺</span>
-                  )}
-                  {entry.secret_count > 0 && (
-                    <span className="text-cyan-400 text-xs">{entry.secret_count} ✨</span>
-                  )}
-                  {entry.ultra_legendary_count > 0 && (
-                    <span className="text-pink-400 text-xs">{entry.ultra_legendary_count} 🌟</span>
-                  )}
-                  {entry.legendary_count > 0 && (
-                    <span className="text-red-400 text-xs">{entry.legendary_count} 🔴</span>
-                  )}
+                  {entry.channel_count > 0 && <span className="text-yellow-400 text-xs">{entry.channel_count} 📺</span>}
+                  {entry.secret_count > 0 && <span className="text-cyan-400 text-xs">{entry.secret_count} ✨</span>}
+                  {entry.ultra_legendary_count > 0 && <span className="text-pink-400 text-xs">{entry.ultra_legendary_count} 🌟</span>}
+                  {entry.legendary_count > 0 && <span className="text-red-400 text-xs">{entry.legendary_count} 🔴</span>}
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="text-white font-bold">{entry.total_cards}</p>
                 <p className="text-gray-500 text-xs">cartes</p>
               </div>
-            </div>
+            </Link>
           ))}
           {board.length === 0 && (
             <p className="text-center text-gray-500 py-12">Aucun joueur pour le moment. Sois le premier !</p>
