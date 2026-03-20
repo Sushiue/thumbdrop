@@ -139,41 +139,86 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0, favoriteChannel?:
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) throw new Error('YOUTUBE_API_KEY not set');
 
-  const useFavorite  = favoriteChannel && Math.random() < 0.10;
-  const category     = YT_CATEGORIES[Math.floor(Math.random() * YT_CATEGORIES.length)];
-  const regionCode   = lang === 'fr' ? 'FR' : 'US';
-  const relLang      = lang === 'fr' ? 'fr' : 'en';
-  const query        = useFavorite ? `${favoriteChannel}` : randomQuery(lang);
-  const orderOptions = ['relevance', 'date', 'viewCount', 'rating'];
-  const order        = orderOptions[Math.floor(Math.random() * orderOptions.length)];
+  const regionCode = lang === 'fr' ? 'FR' : 'US';
+  const useFavorite = favoriteChannel && Math.random() < 0.10;
 
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet`
-    + `&q=${encodeURIComponent(query)}`
-    + `&type=video`
-    + `&maxResults=50`
-    + `&videoDuration=medium`
-    + `&videoCategoryId=${category}`
-    + `&regionCode=${regionCode}`
-    + `&relevanceLanguage=${relLang}`
-    + `&order=${order}`
-    + `&key=${apiKey}`;
+  let videoId: string;
 
-  let searchData = await (await fetch(url)).json();
+  if (useFavorite) {
+    // Recherche ciblée sur la chaîne favorite (100 unités)
+    const searchRes  = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(favoriteChannel!)}&type=video&maxResults=50&videoDuration=medium&key=${apiKey}`
+    );
+    const searchData = await searchRes.json();
+    if (!searchData.items?.length) throw new Error('No results for favorite channel');
+    const item = searchData.items[Math.floor(Math.random() * searchData.items.length)];
+    videoId = item.id.videoId;
+  } else {
+    // Utilise mostPopular — coûte seulement 1 unité !
+    const category    = YT_CATEGORIES[Math.floor(Math.random() * YT_CATEGORIES.length)];
+    const maxResults  = 50;
+    const pageTokens  = ['', 'CAUQAA', 'CBEQAA', 'CBkQAA', 'DCQAA']; // pages aléatoires
+    const pageToken   = pageTokens[Math.floor(Math.random() * pageTokens.length)];
 
-  // Fallback sans catégorie si pas de résultats
-  if (!searchData.items?.length) {
-    const fallbackUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet`
-      + `&q=${encodeURIComponent(randomQuery(lang))}`
-      + `&type=video&maxResults=50&videoDuration=medium`
-      + `&regionCode=${regionCode}&relevanceLanguage=${relLang}`
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails`
+      + `&chart=mostPopular`
+      + `&regionCode=${regionCode}`
+      + `&videoCategoryId=${category}`
+      + `&maxResults=${maxResults}`
+      + (pageToken ? `&pageToken=${pageToken}` : '')
       + `&key=${apiKey}`;
-    searchData = await (await fetch(fallbackUrl)).json();
-    if (!searchData.items?.length) throw new Error('No YouTube results');
+
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    if (!data.items?.length) {
+      // Fallback sans catégorie
+      const fallbackUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails`
+        + `&chart=mostPopular&regionCode=${regionCode}&maxResults=50&key=${apiKey}`;
+      const fallbackData = await (await fetch(fallbackUrl)).json();
+      if (!fallbackData.items?.length) throw new Error('No YouTube results');
+      const item = fallbackData.items[Math.floor(Math.random() * fallbackData.items.length)];
+
+      // Anti-Shorts
+      const dur = item.contentDetails?.duration as string ?? '';
+      if (/^PT(\d+S|[0-3]M(\d+S)?)$/.test(dur)) throw new Error('Short detected');
+
+      const vc = parseInt(item.statistics?.viewCount || '0', 10);
+      const lc = parseInt(item.statistics?.likeCount || '0', 10);
+      const bv = rarityBoost === 0 ? vc : rarityBoost === 1 ? vc * 3 : vc * 10;
+      return {
+        videoId:      item.id as string,
+        title:        item.snippet.title as string,
+        thumbnailUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url as string,
+        channelName:  item.snippet.channelTitle as string,
+        channelId:    item.snippet.channelId as string,
+        viewCount: vc, likeCount: lc,
+        rarity: rarityFromViews(bv),
+      };
+    }
+
+    const item = data.items[Math.floor(Math.random() * data.items.length)];
+
+    // Anti-Shorts
+    const dur = item.contentDetails?.duration as string ?? '';
+    if (/^PT(\d+S|[0-3]M(\d+S)?)$/.test(dur)) throw new Error('Short detected');
+
+    const vc = parseInt(item.statistics?.viewCount || '0', 10);
+    const lc = parseInt(item.statistics?.likeCount || '0', 10);
+    const bv = rarityBoost === 0 ? vc : rarityBoost === 1 ? vc * 3 : vc * 10;
+
+    return {
+      videoId:      item.id as string,
+      title:        item.snippet.title as string,
+      thumbnailUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url as string,
+      channelName:  item.snippet.channelTitle as string,
+      channelId:    item.snippet.channelId as string,
+      viewCount: vc, likeCount: lc,
+      rarity: rarityFromViews(bv),
+    };
   }
 
-  const item    = searchData.items[Math.floor(Math.random() * searchData.items.length)];
-  const videoId = item.id.videoId;
-
+  // Si on arrive ici c'est le cas favoriteChannel — on fetch les stats séparément
   const statsRes  = await fetch(
     `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoId}&key=${apiKey}`
   );
@@ -181,16 +226,12 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0, favoriteChannel?:
   const video     = statsData.items?.[0];
   if (!video) throw new Error('Video stats not found');
 
-  // Anti-Shorts
-  const duration = video.contentDetails?.duration as string ?? '';
-  const isShort  = /^PT(\d+S|[0-3]M(\d+S)?)$/.test(duration);
-  if (isShort) throw new Error('Short detected, retry');
+  const dur = video.contentDetails?.duration as string ?? '';
+  if (/^PT(\d+S|[0-3]M(\d+S)?)$/.test(dur)) throw new Error('Short detected');
 
-  const viewCount    = parseInt(video.statistics.viewCount || '0', 10);
-  const likeCount    = parseInt(video.statistics.likeCount || '0', 10);
-  const boostedViews = rarityBoost === 0 ? viewCount
-    : rarityBoost === 1 ? viewCount * 3
-    : viewCount * 10;
+  const vc = parseInt(video.statistics?.viewCount || '0', 10);
+  const lc = parseInt(video.statistics?.likeCount || '0', 10);
+  const bv = rarityBoost === 0 ? vc : rarityBoost === 1 ? vc * 3 : vc * 10;
 
   return {
     videoId,
@@ -198,9 +239,8 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0, favoriteChannel?:
     thumbnailUrl: video.snippet.thumbnails?.high?.url || video.snippet.thumbnails?.default?.url as string,
     channelName:  video.snippet.channelTitle as string,
     channelId:    video.snippet.channelId as string,
-    viewCount,
-    likeCount,
-    rarity: rarityFromViews(boostedViews),
+    viewCount: vc, likeCount: lc,
+    rarity: rarityFromViews(bv),
   };
 }
 
