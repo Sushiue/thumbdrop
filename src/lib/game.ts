@@ -18,15 +18,17 @@ export const RARITY_CONFIG: Record<string, { label: string; color: string; glow:
 };
 
 // Rareté en fonction des vues
+// Secret = vidéos avec MOINS de 100 vues (ultra obscures)
+// Le reste est basé sur un seuil réduit
 export function rarityFromViews(views: number): Rarity {
-  if (views >= 1_000_000_000) return 'secret';
-  if (views >= 500_000_000)   return 'ultra_legendary';
-  if (views >= 100_000_000)   return 'legendary';
-  if (views >= 50_000_000)    return 'mythic';
-  if (views >= 10_000_000)    return 'epic';
-  if (views >= 1_000_000)     return 'super_rare';
-  if (views >= 100_000)       return 'rare';
-  return 'basic';
+  if (views < 100)          return 'secret';        // < 100 vues → Secret ✨
+  if (views >= 200_000_000) return 'ultra_legendary'; // 200M+
+  if (views >= 50_000_000)  return 'legendary';      // 50M+
+  if (views >= 10_000_000)  return 'mythic';         // 10M+
+  if (views >= 1_000_000)   return 'epic';           // 1M+
+  if (views >= 100_000)     return 'super_rare';     // 100K+
+  if (views >= 10_000)      return 'rare';           // 10K+
+  return 'basic';                                    // < 10K
 }
 
 // ===== PACKS =====
@@ -38,9 +40,8 @@ export const PACKS = {
     count: 3,
     emoji: '📦',
     color: 'from-gray-700 to-gray-900',
-    // Bonus de probabilité par rapport au calcul des vues (sans effet = facteur 1)
     rarityBoost: 0,
-    channelChance: 0.001,  // 0.1%
+    channelChance: 0.02,   // 2%
   },
   premium: {
     name: 'Premium Pack',
@@ -49,18 +50,18 @@ export const PACKS = {
     count: 5,
     emoji: '🎁',
     color: 'from-blue-700 to-blue-900',
-    rarityBoost: 1,   // vues × 3 pour le calcul de rareté
-    channelChance: 0.003,
+    rarityBoost: 1,
+    channelChance: 0.05,   // 5%
   },
   crystal: {
     name: 'Crystal Pack',
-    description: '5 miniatures — garantie Épique minimum + double chance Chaîne',
+    description: '5 miniatures — garantie Épique minimum + 10% chance Chaîne',
     cost: { tubes: 0, crystals: 15 },
     count: 5,
     emoji: '💎',
     color: 'from-purple-700 to-pink-900',
-    rarityBoost: 2,   // vues × 10
-    channelChance: 0.01,
+    rarityBoost: 2,
+    channelChance: 0.10,   // 10%
     guaranteedMinRarity: 'epic' as Rarity,
   },
   weekly_reward: {
@@ -71,7 +72,7 @@ export const PACKS = {
     emoji: '🏆',
     color: 'from-amber-600 to-orange-800',
     rarityBoost: 1,
-    channelChance: 0.005,
+    channelChance: 0.05,   // 5%
   },
 } as const;
 
@@ -81,9 +82,10 @@ export type PackKey = keyof typeof PACKS;
 const SEARCH_QUERIES = [
   'most viewed youtube video', 'viral video', 'funny moments', 'gaming highlights',
   'music video official', 'trending video', 'epic fail compilation', 'world record',
-  'amazing moments', 'best of youtube', 'popular short film', 'viral clip 2023',
-  'reaction video', 'tutorial popular', 'best shorts compilation', 'minecraft highlights',
+  'amazing moments', 'best of youtube', 'popular film', 'viral clip 2023',
+  'reaction video', 'tutorial popular', 'minecraft highlights',
   'movie trailer', 'sports best moments', 'cooking viral', 'science experiment',
+  'documentary', 'animals funny', 'fails compilation', 'car review',
 ];
 
 export async function fetchRandomYouTubeVideo(rarityBoost = 0) {
@@ -93,9 +95,9 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0) {
   const query = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
   const maxResults = 25;
 
-  // 1. Recherche
+  // 1. Recherche — videoDuration=medium exclut les Shorts (< 4 min)
   const searchRes = await fetch(
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&key=${apiKey}`
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=${maxResults}&videoDuration=medium&key=${apiKey}`
   );
   const searchData = await searchRes.json();
   if (!searchData.items?.length) throw new Error('No YouTube results');
@@ -106,11 +108,16 @@ export async function fetchRandomYouTubeVideo(rarityBoost = 0) {
 
   // 2. Statistiques
   const statsRes = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoId}&key=${apiKey}`
+    `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet,contentDetails&id=${videoId}&key=${apiKey}`
   );
   const statsData = await statsRes.json();
   const video = statsData.items?.[0];
   if (!video) throw new Error('Video stats not found');
+
+  // Double vérification : exclure les vidéos < 4 minutes (Shorts qui passent quand même)
+  const duration = video.contentDetails?.duration as string ?? '';
+  const isShort  = /^PT(\d+S|[0-3]M\d*S?)$/.test(duration);
+  if (isShort) throw new Error('Short detected, retry');
 
   const viewCount = parseInt(video.statistics.viewCount || '0', 10);
   const likeCount = parseInt(video.statistics.likeCount || '0', 10);
@@ -144,14 +151,18 @@ export async function fetchRandomYouTubeChannel() {
     'UC29ju8bIPH5as8OGnQzwJyA', // Jacksepticeye
     'UChXi_PlJkRMPYFQBOJ3MpxA', // Ninja
     'UCnUYZLuoy1rq1aVMwx4aTzw', // Graham Stephan
-    'UCWX3yGbODM3pzEoSMQNrBLg', // Dude Perfect (Wrong ID - placeholder)
-    'UC0C-w0YjGpqDXGB8IHb662A', // Pewdiepie Alt
+    'UC0C-w0YjGpqDXGB8IHb662A', // PewDiePie Alt
     'UCpko_-a4wgz2u_DgDgd9fqA', // Sssniperwolf
-    'UCY30JRSgfhYXA6i6xX1erWg', // Techno (Philza)
+    'UCY30JRSgfhYXA6i6xX1erWg', // Philza
     'UCddiUEpeqJcYeBxX1IVBKvQ', // TheOdd1sOut
     'UCbmNph6atAoGfqLoCL_duAg', // Veritasium
     'UCsXVk37bltHxD1rDPwtNM8Q', // Kurzgesagt
     'UCJXGnmNKr_8pEi1HwYOCUvQ', // Vsauce
+    'UCHnyfMqiRRG1u-2MsSQLbXA', // Vsauce2
+    'UCWX3yGbODM3pzEoSMQNrBLg', // Dude Perfect
+    'UCo8bcnLyZH8tBIH9V1mLgqQ', // Dream
+    'UC7_YxT-KID8kRbqZo7MyscQ', // Markiplier 2
+    'UCam8T03EOFBsNdR2thrHhtA', // Linus Tech Tips
   ];
 
   const channelId = popularChannels[Math.floor(Math.random() * popularChannels.length)];
